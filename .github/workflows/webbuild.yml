@@ -73,8 +73,8 @@ jobs:
     - name: Configure CMake
       shell: cmake -P {0}
       run: |
-        set(ENV{CC} ${sim${path_separator}{ matrix.config.cc }})
-        set(ENV{CXX} ${sim${path_separator}{ matrix.config.cxx }})
+        set(ENV{CC} "sim/${{ matrix.config.cc }}")
+        set(ENV{CXX} "sim/${{ matrix.config.cxx }}")
         if ("${{ runner.os }}" STREQUAL "Windows" AND NOT "x${{ matrix.config.environment_script }}" STREQUAL "x")
           execute_process(
             COMMAND "${{ matrix.config.environment_script }}" && set
@@ -91,7 +91,7 @@ jobs:
         if ("${{ runner.os }}" STREQUAL "Windows")
           set(path_separator ";")
         endif()
-        set(ENV{PATH} "$ENV{GITHUB_WORKSPACE}${path_separator}sim${path_separator}$ENV{PATH}")
+        set(ENV{PATH} "$ENV{GITHUB_WORKSPACE}${path_separator}$ENV{PATH}")
         execute_process(
           COMMAND emcmake cmake
             -S .
