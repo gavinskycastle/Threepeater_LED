@@ -149,5 +149,5 @@ jobs:
       with:
         name: ${{ matrix.config.name }}_${{ github.run_id }}_${{ env.GIT_HASH_SHORT }}
         path: |
-          build/*
+          sim/build/*
         if-no-files-found: error
