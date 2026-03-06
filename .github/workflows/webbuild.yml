@@ -1,4 +1,4 @@
-name: Web build
+name: Web build (sim)
 
 on: [push, pull_request, workflow_dispatch]
 
@@ -23,6 +23,10 @@ jobs:
     steps:
     - uses: actions/checkout@v1
     - uses: mymindstorm/setup-emsdk@v11
+    
+    - name: Run in sim directory
+      run: cd sim/
+      shell: bash
 
     - name: Verify Emsdk
       run: emcc -v
@@ -137,7 +141,7 @@ jobs:
     - name: Rename html file
       run: |
           cd build/
-          mv MyRaylibProject.html index.html
+          mv Threepeater_LED.html index.html
           cd ../
       shell: bash
     

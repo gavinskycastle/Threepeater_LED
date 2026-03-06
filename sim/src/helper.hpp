@@ -8,7 +8,7 @@
 #include "../libs/raylib/src/raylib.h"
 
 #ifndef PROJECT_NAME
-#define PROJECT_NAME "MyRaylibProject"
+#define PROJECT_NAME "Threepeater_LED"
 #endif
 
 #ifndef VERSION

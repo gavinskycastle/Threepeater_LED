@@ -1,6 +1,9 @@
-[submodule "libs/raylib"]
-	path = libs/raylib
+[submodule "sim/libs/raylib"]
+	path = sim/libs/raylib
 	url = https://github.com/raysan5/raylib
-[submodule "libs/raygui"]
-	path = libs/raygui
+[submodule "sim/libs/raygui"]
+	path = sim/libs/raygui
 	url = https://github.com/raysan5/raygui
+[submodule "common/libs/AnimatedGIF"]
+	path = common/libs/AnimatedGIF
+	url = https://github.com/bitbank2/AnimatedGIF.git
