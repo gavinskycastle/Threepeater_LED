@@ -7,3 +7,9 @@
 [submodule "common/libs/AnimatedGIF"]
 	path = common/libs/AnimatedGIF
 	url = https://github.com/bitbank2/AnimatedGIF.git
+[submodule "esp32/include/AnimatedGIF"]
+	path = esp32/include/AnimatedGIF
+	url = https://github.com/bitbank2/AnimatedGIF.git
+[submodule "sim/libs/AnimatedGIF"]
+	path = sim/libs/AnimatedGIF
+	url = https://github.com/bitbank2/AnimatedGIF.git
