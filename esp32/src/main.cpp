@@ -49,7 +49,7 @@ void setup() {
 void loop() 
 {
    for(uint16_t* frame : dancing_frames) {
-    dma_display->clearScreen();
+    // dma_display->clearScreen();
 
     for (uint16_t pixel = 0; pixel < (PANEL_RES_X * PANEL_RES_Y); pixel++) {
       dma_display->drawPixel(pixel % (PANEL_RES_X), pixel / (PANEL_RES_X), frame[pixel]);
