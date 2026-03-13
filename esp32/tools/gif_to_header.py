@@ -2,31 +2,31 @@
 """
 gif_to_header.py
 
-Convert a GIF file into a C header that embeds the decoded frames as
-an array of Color(r,g,b) values (matching the style used in
-`test_pattern.h` in this workspace).
+Convert a GIF into a C header that matches the layout used by
+`src/dancing.hpp` in this repo: it emits an `#include <Animation.hpp>`,
+a `const uint16_t <name>[frames][width*height]` array with per-pixel
+entries in the form `color565(R, G, B)` arranged by rows (annotated
+with `/*row*/` comments), and a `double <name>_frame_time` with the
+seconds-per-frame value.
 
 Usage:
-    python gif_to_header.py input.gif -o output.h
+    python tools\gif_to_header.py input.gif -o src\output.hpp -n animation_name
 
-By default the script decodes all frames, emits a static 16-bit
-Color(...) helper, a `uint16_t dancing_frames[frames][width*height]`
-array, and a `double dancing_frame_time` (seconds per frame).
-
-Requires Pillow to decode GIF frames.
+Notes:
+- Requires Pillow (`pip install Pillow`).
+- Assumes default size 64x64 unless overridden with --width/--height.
 """
+
 from __future__ import annotations
 
 import argparse
-import os
-import sys
 from pathlib import Path
-from typing import Optional
+from typing import List, Tuple, Optional
+
 from PIL import Image, ImageSequence
 
 
 def sanitize_varname(name: str) -> str:
-    # keep only alnum and underscore, replace others with underscore
     out = []
     for c in name:
         if c.isalnum() or c == '_':
@@ -41,129 +41,100 @@ def sanitize_varname(name: str) -> str:
     return s
 
 
-def format_bytes_c(data: bytes, per_line: int = 12, indent: str = '\t') -> str:
-    hexs = [f"0x{b:02x}" for b in data]
-    lines = []
-    for i in range(0, len(hexs), per_line):
-        chunk = hexs[i : i + per_line]
-        lines.append(indent + ','.join(chunk) + ',')
-    return '\n'.join(lines)
+def frame_durations_ms(img: Image.Image) -> List[int]:
+    durations: List[int] = []
+    for frame in ImageSequence.Iterator(img):
+        dur = frame.info.get('duration', 100)
+        durations.append(int(dur))
+    return durations
 
 
-def detect_gif_info(path: Path) -> tuple[int, int, int]:
-    # returns (width, height, n_frames)
-    try:
-        with Image.open(path) as img:
-            w, h = img.size
-            # n_frames attribute available for PIL >= 4.3
-            n = getattr(img, 'n_frames', None)
-            if n is None:
-                # fallback: iterate
-                n = sum(1 for _ in ImageSequence.Iterator(img))
-            return (w, h, int(n))
-    except Exception:
-        return (0, 0, 0)
+def rgba_to_rgb(bg: Tuple[int, int, int], px: Tuple[int, int, int, int]) -> Tuple[int, int, int]:
+    r, g, b, a = px
+    if a >= 255:
+        return (r, g, b)
+    alpha = a / 255.0
+    return (
+        int(r * alpha + bg[0] * (1 - alpha)),
+        int(g * alpha + bg[1] * (1 - alpha)),
+        int(b * alpha + bg[2] * (1 - alpha)),
+    )
 
 
-def build_frames_header(varname: str, frames_pixels: list[list[tuple[int,int,int]]], width: int, height: int, frame_time_s: float) -> str:
-    # Builds a header in the same style as `test_pattern.h`:
-    # - static uint16_t Color(uint8_t r, uint8_t g, uint8_t b) { ... }
-    # - uint16_t dancing_frames[<n>][width*height] = { ... }
-    # - double dancing_frame_time = <seconds>;
-    n_frames = len(frames_pixels)
-    header_lines: list[str] = []
-    header_lines.append('static uint16_t Color(uint8_t r, uint8_t g, uint8_t b) {')
-    # convert 8-bit per channel RGB into 16-bit RGB565 (R:5,G:6,B:5)
-    # use masking/shifts so callers can pass 0-255 values as seen in examples
-    header_lines.append('  return (uint16_t)(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3));')
-    header_lines.append('}\n')
+def extract_frames(path: Path, size: Tuple[int, int]) -> Tuple[List[Image.Image], float]:
+    with Image.open(path) as img:
+        durations = frame_durations_ms(img)
+        if durations:
+            ms = sum(durations) / len(durations)
+        else:
+            ms = img.info.get('duration', 100)
 
-    header_lines.append(f'uint16_t {varname}[{n_frames}][{width*height}] = {{')
-    for fi, frame in enumerate(frames_pixels, start=1):
-        header_lines.append(f'    // Frame {fi}')
-        header_lines.append('    {')
-        # print rows; each row is width entries, label comment /*row*/
-        for row in range(height):
-            row_idx = row
-            start = row * width
-            end = start + width
-            entries = frame[start:end]
-            entry_texts = [f'Color({r}, {g}, {b})' for (r,g,b) in entries]
-            # join with comma+space, put 16 entries per line similar to example formatting
-            line = '       /*%d*/  %s,' % (row_idx, ', '.join(entry_texts))
-            header_lines.append(line)
-        header_lines.append('    },')
-    header_lines.append('};\n')
-    header_lines.append(f'double dancing_frame_time = {frame_time_s:.6f}; // seconds per frame')
-    return '\n'.join(header_lines)
+        frames: List[Image.Image] = []
+        for frame in ImageSequence.Iterator(img):
+            fr = frame.convert('RGBA')
+            if fr.size != size:
+                fr = fr.resize(size, Image.NEAREST)
+            frames.append(fr)
+
+    return frames, (ms / 1000.0)
+
+
+def write_c_header(path: Path, varname: str, frames: List[Image.Image], frame_time_s: float, width: int, height: int, bg: Tuple[int, int, int] = (0, 0, 0)) -> None:
+    lines: List[str] = []
+    lines.append('#include <Animation.hpp>\n')
+    lines.append(f'// Each frame is an array of {width*height} uint16_t pixels (width*height).')
+    lines.append(f'const uint16_t {varname}[{len(frames)}][{width*height}] = {{')
+
+    for fi, frame in enumerate(frames, start=1):
+        lines.append(f'    // Frame {fi}')
+        lines.append('    {')
+        f = frame
+        px = f.load()
+        for y in range(height):
+            row_vals: List[str] = []
+            for x in range(width):
+                p = px[x, y]
+                # p is RGBA tuple
+                r, g, b = rgba_to_rgb(bg, p)
+                row_vals.append(f'color565({r}, {g}, {b})')
+            rows = ', '.join(row_vals)
+            lines.append(f'       /*{y}*/  {rows},')
+        lines.append('    },')
+
+    lines.append('};\n')
+    lines.append(f'double {varname}_frame_time = {frame_time_s};\n')
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, 'w', encoding='utf-8') as fh:
+        fh.write('\n'.join(lines))
 
 
 def main(argv=None):
-    p = argparse.ArgumentParser(description='Decode a GIF and emit a C header with dancing_frames array and dancing_frame_time.')
-    p.add_argument('input', help='input GIF file path')
+    p = argparse.ArgumentParser(description='Convert a GIF to a C header (color565 frames).')
+    p.add_argument('input', help='input GIF file')
     p.add_argument('-o', '--output', help='output header file path (default: <input>.h)')
-    p.add_argument('-n', '--name', help='array variable name to use in the header (default: dancing_frames)', default='dancing_frames')
-    p.add_argument('--assume-size', nargs=2, metavar=('W', 'H'), type=int, help='assume the GIF dimensions (overrides detection)')
-    p.add_argument('--no-resize', dest='no_resize', action='store_true', help='do not resize frames; fail if sizes do not match')
-    p.add_argument('--bpp', type=int, default=16, help='bits per pixel to print in the header comment (unused)')
+    p.add_argument('-n', '--name', help='variable base name')
+    p.add_argument('--width', type=int, default=64, help='frame width (default 64)')
+    p.add_argument('--height', type=int, default=64, help='frame height (default 64)')
+    p.add_argument('--bg', nargs=3, type=int, metavar=('R','G','B'), help='background color for transparency (default 0 0 0)')
     args = p.parse_args(argv)
 
     in_path = Path(args.input)
     if not in_path.exists():
-        print(f"Input file not found: {in_path}")
+        print(f'Input file not found: {in_path}')
         return 2
 
     out_path = Path(args.output) if args.output else in_path.with_suffix('.h')
-    varname = args.name or 'dancing_frames'
+    # Default varname: use the input filename (stem) unless overridden with --name
+    default_name = args.name if args.name else in_path.stem
+    varname = sanitize_varname(default_name)
+    size = (args.width, args.height)
+    bg = tuple(args.bg) if args.bg else (0, 0, 0)
 
-    # decode frames using Pillow
-    try:
-        img = Image.open(in_path)
-    except Exception as e:
-        print(f"Failed to open image with Pillow: {e}")
-        return 2
+    frames, frame_time = extract_frames(in_path, size)
+    write_c_header(out_path, varname, frames, frame_time, size[0], size[1], bg=bg)
 
-    detected_w, detected_h = img.size
-    frames_pixels: list[list[tuple[int,int,int]]] = []
-    durations_ms: list[int] = []
-
-    # accumulate frames onto a base image to handle partial-frame GIFs
-    base = Image.new('RGBA', img.size)
-    for frame in ImageSequence.Iterator(img):
-        duration = frame.info.get('duration', 100)  # ms
-        durations_ms.append(duration)
-        frame_rgba = frame.convert('RGBA')
-        # paste with alpha to composite correctly
-        base.paste(frame_rgba, (0,0), frame_rgba)
-        rgb = base.convert('RGB')
-        # optionally resize
-        if args.assume_size:
-            w, h = args.assume_size
-            if (w, h) != rgb.size:
-                if args.no_resize:
-                    raise RuntimeError(f"Frame size {rgb.size} does not match assumed size {(w,h)} and --no-resize set")
-                rgb = rgb.resize((w, h), resample=Image.NEAREST)
-        w, h = rgb.size
-        pixels = list(rgb.getdata())
-        frames_pixels.append(pixels)
-
-    # choose final width/height
-    if args.assume_size:
-        width, height = args.assume_size
-    else:
-        width, height = detected_w, detected_h
-
-    # frame time: use the first non-zero duration or average
-    frame_time_ms = next((d for d in durations_ms if d and d>0), durations_ms[0] if durations_ms else 100)
-    frame_time_s = frame_time_ms / 1000.0
-
-    header_text = build_frames_header(varname, frames_pixels, width, height, frame_time_s)
-
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(out_path, 'w', encoding='utf-8') as f:
-        f.write(header_text)
-
-    print(f"Wrote frames header to {out_path} ({len(frames_pixels)} frames, {width}x{height} each)")
+    print(f'Wrote {out_path} — frames={len(frames)}, size={size[0]}x{size[1]}, frame_time={frame_time}s, var={varname}')
     return 0
 
 
