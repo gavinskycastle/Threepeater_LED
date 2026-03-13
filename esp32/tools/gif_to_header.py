@@ -102,7 +102,7 @@ def write_c_header(path: Path, varname: str, frames: List[Image.Image], frame_ti
         lines.append('    },')
 
     lines.append('};\n')
-    lines.append(f'double {varname}_frame_time = {frame_time_s};\n')
+    lines.append(f'Animation {varname}_animation = Animation({varname}, {len(frames)}, {frame_time_s});\n')
 
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, 'w', encoding='utf-8') as fh:

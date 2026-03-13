@@ -1,6 +1,6 @@
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 #include "pinmaps.hpp"
-#include "dancing.hpp"
+#include "pickup.hpp"
 
 #define PANEL_RES_X 64     // Number of pixels wide of each INDIVIDUAL panel module. 
 #define PANEL_RES_Y 64     // Number of pixels tall of each INDIVIDUAL panel module.
@@ -43,5 +43,5 @@ void setup() {
 
 void loop() 
 {
-    dancing_animation.drawNextFrame(dma_display);
+    pickup_animation.drawNextFrame(dma_display);
 }
